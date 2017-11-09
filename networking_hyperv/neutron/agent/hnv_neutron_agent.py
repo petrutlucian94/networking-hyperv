@@ -63,6 +63,7 @@ class HNVAgent(hyperv_base.Layer2Agent):
         LOG.info("Provisioning network %s", net_uuid)
 
         vswitch_name = self._get_vswitch_name(network_type, physical_network)
+
         vswitch_map = {
             'network_type': network_type,
             'vswitch_name': vswitch_name,

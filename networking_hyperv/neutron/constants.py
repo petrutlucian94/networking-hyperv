@@ -46,3 +46,5 @@ PROFILE_NAME = "OpenStackProfile"
 VENDOR_ID = "{1FA41B39-B444-4E43-B35A-E1F7985FD548}"
 VENDOR_NAME = "NetworkController"
 PROFILE_DATA = 1
+
+OVS_VSWITCH_EXT_NAME = "Cloudbase Open vSwitch Extension"

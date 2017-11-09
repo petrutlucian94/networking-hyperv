@@ -25,6 +25,7 @@ from neutron.agent import rpc as agent_rpc
 from neutron.common import rpc as n_rpc
 from neutron.common import topics
 from neutron_lib import constants as n_const
+from os_win import constants as os_win_const
 from os_win import exceptions as os_win_exc
 from oslo_concurrency import lockutils
 from oslo_log import log as logging
@@ -32,6 +33,7 @@ from oslo_service import loopingcall
 import six
 
 from networking_hyperv.common.i18n import _, _LI, _LE    # noqa
+from networking_hyperv.neutron import exception
 from networking_hyperv.neutron.agent import base as base_agent
 from networking_hyperv.neutron import config
 from networking_hyperv.neutron import constants
@@ -78,6 +80,7 @@ class Layer2Agent(base_agent.BaseAgent):
         self._local_network_vswitch = agent_config.get(
             'local_network_vswitch')
         self._load_physical_network_mappings(self._phys_net_map)
+        self._validate_vswitches()
 
         self._endpoints.append(self)
         self._event_callback_pairs.extend([
@@ -86,6 +89,42 @@ class Layer2Agent(base_agent.BaseAgent):
         ])
 
         tpool.set_num_threads(self._worker_count)
+
+    def _validate_vswitches(self):
+        vswitch_names = self._physical_network_mappings.values()
+        if self._local_network_vswitch:
+            vswitch_names.append(self._local_network_vswitch)
+
+        vswitches_valid = True
+        for vswitch_name in vswitch_names:
+            try:
+                self._validate_vswitch(vswitch_name)
+            except exception.ValidationError:
+                # We're validating all the vSwitches before erroring out.
+                LOG.error("Validating vSwitch %s failed", vswitch_name)
+                vswitches_valid = False
+
+        # We're currently stopping the service if any of the configured
+        # vSwitches are unavailable.
+        if not vswitches_valid:
+            err_msg = _("Validating one or more configured vSwitches failed.")
+            raise exception.ValidationError(err_msg)
+        elif not vswitch_names:
+            err_msg = _("No vSwitch configured.")
+
+    def _validate_vswitch(self, vswitch_name):
+        try:
+            vswitch_extensions = self._utils.get_vswitch_extensions(vswitch_name)
+        except os_win_exc.HyperVvSwitchNotFound as exc:
+            raise exception.ValidationError(exc.message)
+
+        for ext in vswitch_extensions:
+            if (ext['name'] == constants.OVS_VSWITCH_EXT_NAME and
+                    ext['enabled_state'] == os_win_const.CIM_STATE_ENABLED):
+                err_msg = _("The Open vSwitch extension is enabled on the "
+                            "'%s' vSwitch. For this reason, this agent "
+                            "cannot use the specified vSwitch.")
+                raise exception.ValidationError(err_msg % vswitch_name)
 
     def _setup_qos_extension(self):
         """Setup the QOS extension if it is required."""
